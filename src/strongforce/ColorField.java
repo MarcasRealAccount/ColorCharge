@@ -2,8 +2,6 @@ package strongforce;
 
 import java.util.ArrayList;
 
-import processing.core.PVector;
-
 public class ColorField {
 	private final ArrayList<ColorPoint> points = new ArrayList<>();
 
@@ -16,14 +14,14 @@ public class ColorField {
 	}
 
 	public ColorPoint closestPoint(float x, float y) {
-		ColorPoint closest       = null;
-		float      closestDistSq = 0.2F;
+		ColorPoint closest = null;
+		float closestDistSq = 0.2F;
 		for (var point : points) {
-			float dx     = point.x - x;
-			float dy     = point.y - y;
+			float dx = point.x - x;
+			float dy = point.y - y;
 			float distSq = dx * dx + dy * dy;
 			if (distSq < closestDistSq) {
-				closest       = point;
+				closest = point;
 				closestDistSq = distSq;
 			}
 		}
@@ -35,10 +33,10 @@ public class ColorField {
 		float g = 0.0F;
 		float b = 0.0F;
 		for (var point : points) {
-			float dx     = point.x - x;
-			float dy     = point.y - y;
+			float dx = point.x - x;
+			float dy = point.y - y;
 			float distSq = dx * dx + dy * dy;
-			float amp    = point.mass / distSq;
+			float amp = point.mass / distSq;
 			r += point.r * amp;
 			g += point.g * amp;
 			b += point.b * amp;
@@ -48,7 +46,7 @@ public class ColorField {
 		color.b = b;
 	}
 
-	public void calculateDirection(float x, float y, float d, PVector rg, PVector rb, PVector gb) {
+	public void calculateDirection(float x, float y, float d, Vector rg, Vector rb, Vector gb) {
 		Color z1 = new Color();
 		Color z2 = new Color();
 		Color z3 = new Color();

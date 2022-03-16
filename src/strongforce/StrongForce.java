@@ -1,16 +1,25 @@
 package strongforce;
 
-import processing.core.PApplet;
-import processing.core.PImage;
-import processing.core.PVector;
-import processing.event.MouseEvent;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 
-public class StrongForce extends PApplet {
+import strongforce.rendering.Image;
+import strongforce.rendering.Mesh;
+import strongforce.rendering.ShaderProgram;
+import strongforce.rendering.StaticVertex2D;
+import strongforce.windowing.Window;
+
+public class StrongForce {
+	private Window window = new Window(1440, 720, "ColorField");
+
+	private Mesh<StaticVertex2D> rect = new Mesh<StaticVertex2D>();
+	private ShaderProgram rectShaders = new ShaderProgram();
+
+	private Image colors = new Image();
+	private Image fieldVectors = new Image();
+
 	private ColorField colorField = new ColorField();
-
-	private PImage colors;
-	private PImage fieldVectors;
-
 	private ColorPoint hoveredPoint = null;
 
 	private float minX = -2.0F;
@@ -21,29 +30,91 @@ public class StrongForce extends PApplet {
 	private float pX = 0.0F;
 	private float pY = 0.0F;
 
+	private float mouseX = 0.0F;
+	private float mouseY = 0.0F;
+	private int buttonsDown = 0;
+	private boolean middle = false;
+
+	public static float clamp(float x, float min, float max) {
+		return Math.max(Math.min(x, max), min);
+	}
+
+	public static float map(float x, float xmin, float xmax, float ymin, float ymax) {
+		return (ymax - ymin) / (xmax - xmin) * (x - xmin) + ymin;
+	}
+
+	public static float mapc(float x, float xmin, float xmax, float ymin, float ymax) {
+		return clamp(map(x, xmin, xmax, ymin, ymax), ymin, ymax);
+	}
+
 	public float mapScreenX(float x) {
-		return map(x, 0, height, minX, maxX);
+		return map(x, 0, colors.getHeight(), minX, maxX);
 	}
 
 	public float mapScreenY(float y) {
-		return map(y, 0, height, minY, maxY);
+		return map(y, 0, colors.getHeight(), minY, maxY);
 	}
 
 	public float mapColorFieldX(float x) {
-		return map(x, minX, maxX, 0, height);
+		return map(x, minX, maxX, 0, colors.getHeight());
 	}
 
 	public float mapColorFieldY(float y) {
-		return map(y, minY, maxY, 0, height);
+		return map(y, minY, maxY, 0, colors.getHeight());
 	}
 
-	@Override
-	public void settings() {
-		size(1440, 720, P2D);
-	}
+	public void run() {
+		window.create();
 
-	@Override
-	public void setup() {
+		GLFW.glfwSetScrollCallback(window.getWindowPtr(), this::mouseWheel);
+		GLFW.glfwSetCursorPosCallback(window.getWindowPtr(), this::mouseMove);
+		GLFW.glfwSetMouseButtonCallback(window.getWindowPtr(), this::mouseButton);
+
+		rect.setVertices(new StaticVertex2D[] { new StaticVertex2D(-1.0F, 1.0F, 0.0F, 0.0F),
+				new StaticVertex2D(1.0F, 1.0F, 1.0F, 0.0F), new StaticVertex2D(1.0F, -1.0F, 1.0F, 1.0F),
+				new StaticVertex2D(-1.0F, -1.0F, 0.0F, 1.0F) });
+		rect.setIndices(new int[] { 0, 1, 2, 2, 3, 0 });
+		rect.updateGL();
+
+		String vertexShader = """
+				#version 410 core
+
+				layout(location = 0) in vec2 position;
+				layout(location = 1) in vec2 uv;
+
+				layout(location = 0) out vec2 passUV;
+
+				void main() {
+					gl_Position = vec4(position, 0.0, 1.0);
+					passUV = uv;
+				}
+								""";
+		String fragmentShader = """
+				#version 410 core
+
+				layout(location = 0) in vec2 passUV;
+
+				layout(location = 0) out vec4 color;
+
+				uniform sampler2D colors;
+				uniform sampler2D fieldVectors;
+
+				void main() {
+					if (passUV.x >= 0.5)
+						color = texture(fieldVectors, vec2(passUV.x * 2.0 - 1.0, passUV.y));
+					else
+						color = texture(colors, vec2(passUV.x * 2.0, passUV.y));
+				}
+				""";
+		rectShaders.setShaderSource(vertexShader, fragmentShader);
+		rectShaders.updateGL();
+		rectShaders.bind();
+		rectShaders.setUniform1i("colors", 0);
+		rectShaders.setUniform1i("fieldVectors", 1);
+
+		colors.allocate(720, 720);
+		fieldVectors.allocate(720, 720);
+
 		// Proton
 //		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 0.0F, 1.0F, 0.0F, 4.8e-1F));
 //		colorField.addColorPoint(new ColorPoint(-0.5F, 0.5F, 0.0F, 0.0F, 1.0F, 2.3e-1F));
@@ -51,113 +122,127 @@ public class StrongForce extends PApplet {
 
 		// Meson
 		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, 0.5F, 1.0F, 1.0F, 0.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 0.0F, 1.0F, 0.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, 0.5F, 0.0F, 1.0F, 1.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, 0.5F, 0.0F, 1.0F, 1.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
 		colorField.addColorPoint(new ColorPoint(0.0F, 0.5F, 0.0F, 1.0F, 1.0F, 2.3e-1F));
 
-		colors       = createImage(height, height, RGB);
-		fieldVectors = createImage(height, height, RGB);
-		colors.loadPixels();
-		fieldVectors.loadPixels();
-	}
+		while (!window.isCloseRequested()) {
+			Color color = new Color();
+			Vector rg = new Vector();
+			Vector rb = new Vector();
+			Vector gb = new Vector();
+			Vector combined = new Vector();
+			for (int y = 0; y < colors.getHeight(); ++y) {
+				float my = map(y, 0, colors.getHeight(), minY, maxY);
+				for (int x = 0; x < colors.getWidth(); ++x) {
+					int index = x + y * colors.getWidth();
+					float mx = map(x, 0, colors.getWidth(), minX, maxX);
 
-	@Override
-	public void draw() {
-		Color   color    = new Color();
-		PVector rg       = new PVector();
-		PVector rb       = new PVector();
-		PVector gb       = new PVector();
-		PVector combined = new PVector();
-		for (int y = 0; y < height; ++y) {
-			float my = map(y, 0, height, minY, maxY);
-			for (int x = 0; x < height; ++x) {
-				int   index = x + y * height;
-				float mx    = map(x, 0, height, minX, maxX);
+					colorField.calculateColor(mx, my, color);
+					colorField.calculateDirection(mx, my, (maxX - minX) / colors.getWidth() * 0.02F, rg, rb, gb);
 
-				colorField.calculateColor(mx, my, color);
-				colorField.calculateDirection(mx, my, (maxX - minX) / height * 0.02F, rg, rb, gb);
+					combined.x = rg.x + rb.x/* + gb.x */;
+					combined.y = rg.y + rb.y/* + gb.y */;
+					combined.z = rg.z + rb.z/* + gb.z */;
 
-				combined.x = rg.x + rb.x/* + gb.x */;
-				combined.y = rg.y + rb.y/* + gb.y */;
-				combined.z = rg.z + rb.z/* + gb.z */;
+					int r = (int) mapc(color.r, 0.0F, 1.20F, 0.0F, 255.0F);
+					int g = (int) mapc(color.g, 0.0F, 1.20F, 0.0F, 255.0F);
+					int b = (int) mapc(color.b, 0.0F, 1.20F, 0.0F, 255.0F);
 
-				int r = (int) max(min(map(color.r, 0.0F, 1.20F, 0.0F, 255.0F), 255.0F), 0.0F);
-				int g = (int) max(min(map(color.g, 0.0F, 1.20F, 0.0F, 255.0F), 255.0F), 0.0F);
-				int b = (int) max(min(map(color.b, 0.0F, 1.20F, 0.0F, 255.0F), 255.0F), 0.0F);
+					colors.data[index] = 255 << 24 | (b & 0xFF) << 16 | (g & 0xFF) << 8 | (r & 0xFF);
 
-				colors.pixels[index] = 255 << 24 | (r & 0xFF) << 16 | (g & 0xFF) << 8 | (b & 0xFF);
+					r = (int) (combined.x * 128.0F + 128.0F);
+					g = (int) (combined.y * 128.0F + 128.0F);
+					b = (int) (combined.z * 128.0F + 128.0F);
 
-				r = (int) (combined.x * 128.0F + 128.0F);
-				g = (int) (combined.y * 128.0F + 128.0F);
-				b = (int) (combined.z * 128.0F + 128.0F);
-
-				fieldVectors.pixels[index] = 255 << 24 | (r & 0xFF) << 16 | (g & 0xFF) << 8 | (b & 0xFF);
+					fieldVectors.data[index] = 255 << 24 | (b & 0xFF) << 16 | (g & 0xFF) << 8 | (r & 0xFF);
+				}
 			}
+
+			colors.updateGL();
+			fieldVectors.updateGL();
+
+			GL11.glClearColor(0.1F, 0.1F, 0.1F, 1.0F);
+			GL11.glClearDepth(0.0);
+			GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+
+			rectShaders.bind();
+			colors.bind(GL13.GL_TEXTURE0);
+			fieldVectors.bind(GL13.GL_TEXTURE1);
+			rect.draw();
+
+			window.update();
 		}
 
-		colors.updatePixels();
-		fieldVectors.updatePixels();
-
-		image(colors, 0, 0, height, height);
-		image(fieldVectors, height, 0, height, height);
-
-		if (hoveredPoint != null) {
-			noFill();
-			stroke(255, 0, 0);
-			circle(mapColorFieldX(hoveredPoint.x), mapColorFieldY(hoveredPoint.y), 10.0F);
-		}
+		rect.cleanUp();
+		rectShaders.cleanUp();
+		colors.cleanUp();
+		fieldVectors.cleanUp();
+		window.destroy();
 	}
 
-	@Override
-	public void mouseWheel(MouseEvent event) {
-		float eX = mapScreenX(event.getX());
-		float eY = mapScreenY(event.getY());
+	public void mouseWheel(long windowPtr, double dx, double dy) {
+		float eX = mapScreenX(mouseX);
+		float eY = mapScreenY(mouseY);
 
-		float pow        = event.getCount();
-		float zoomFactor = (float) Math.pow(1.05F, pow);
+		float zoomFactor = (float) Math.pow(1.05F, dy);
 
-		minX = (minX - eX) * zoomFactor + eX;
-		minY = (minY - eY) * zoomFactor + eY;
-		maxX = (maxX - eX) * zoomFactor + eX;
-		maxY = (maxY - eY) * zoomFactor + eY;
+		this.minX = (this.minX - eX) * zoomFactor + eX;
+		this.minY = (this.minY - eY) * zoomFactor + eY;
+		this.maxX = (this.maxX - eX) * zoomFactor + eX;
+		this.maxY = (this.maxY - eY) * zoomFactor + eY;
 	}
 
-	@Override
-	public void mouseMoved(MouseEvent event) {
-		hoveredPoint = colorField.closestPoint(mapScreenX(event.getX()), mapScreenY(event.getY()));
+	public void mouseMove(long windowPtr, double x, double y) {
+		this.mouseX = (float) x;
+		this.mouseY = (float) y;
+
+		if (buttonsDown > 0)
+			mouseDrag(windowPtr, x, y);
+		else
+			this.hoveredPoint = this.colorField.closestPoint(mapScreenX(this.mouseX), mapScreenY(this.mouseY));
 	}
 
-	@Override
-	public void mousePressed(MouseEvent event) {
-		if (event.getButton() == CENTER) {
-			pX = mapScreenX(event.getX());
-			pY = mapScreenY(event.getY());
+	public void mouseButton(long windowPtr, int button, int action, int mods) {
+		if (action == GLFW.GLFW_PRESS)
+			mousePress(windowPtr, button);
+		else if (action == GLFW.GLFW_RELEASE)
+			mouseRelease(windowPtr, button);
+	}
+
+	public void mousePress(long windowPtr, int button) {
+		++buttonsDown;
+		if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
+			this.pX = mapScreenX(this.mouseX);
+			this.pY = mapScreenY(this.mouseY);
+			this.middle = true;
 		} else {
-			hoveredPoint = colorField.closestPoint(mapScreenX(event.getX()), mapScreenY(event.getY()));
+			this.hoveredPoint = this.colorField.closestPoint(mapScreenX(this.mouseX), mapScreenY(this.mouseY));
 		}
 	}
 
-	@Override
-	public void mouseDragged(MouseEvent event) {
-		if (event.getButton() == CENTER) {
-			float eX = mapScreenX(event.getX());
-			float eY = mapScreenY(event.getY());
+	public void mouseRelease(long windowPtr, int button) {
+		--buttonsDown;
+		if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
+			this.middle = false;
+	}
 
-			minX = (minX - eX) + pX;
-			minY = (minY - eY) + pY;
-			maxX = (maxX - eX) + pX;
-			maxY = (maxY - eY) + pY;
+	public void mouseDrag(long windowPtr, double x, double y) {
+		if (middle) {
+			float eX = mapScreenX(this.mouseX);
+			float eY = mapScreenY(this.mouseY);
+
+			this.minX = (this.minX - eX) + this.pX;
+			this.minY = (this.minY - eY) + this.pY;
+			this.maxX = (this.maxX - eX) + this.pX;
+			this.maxY = (this.maxY - eY) + this.pY;
+			this.pX = eX;
+			this.pY = eY;
 		} else if (hoveredPoint != null) {
-			hoveredPoint.x = mapScreenX(event.getX());
-			hoveredPoint.y = mapScreenY(event.getY());
+			this.hoveredPoint.x = mapScreenX(this.mouseX);
+			this.hoveredPoint.y = mapScreenY(this.mouseY);
 		}
 	}
 
 	public static void main(String[] args) {
-		PApplet.main(StrongForce.class, args);
+		new StrongForce().run();
 	}
 }
