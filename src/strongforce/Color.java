@@ -1,13 +1,13 @@
 package strongforce;
 
 public class Color {
-	public float r, g, b;
+	public double r, g, b;
 
 	public Color() {
 		this(0.0F, 0.0F, 0.0F);
 	}
 
-	public Color(float r, float g, float b) {
+	public Color(double r, double g, double b) {
 		this.r = r;
 		this.g = g;
 		this.b = b;

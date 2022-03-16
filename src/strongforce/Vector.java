@@ -1,13 +1,13 @@
 package strongforce;
 
 public class Vector {
-	public float x, y, z;
+	public double x, y, z;
 
 	public Vector() {
 		this(0.0F, 0.0F, 0.0F);
 	}
 
-	public Vector(float x, float y, float z) {
+	public Vector(double x, double y, double z) {
 		this.x = x;
 		this.y = y;
 		this.z = z;

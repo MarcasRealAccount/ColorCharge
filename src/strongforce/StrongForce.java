@@ -4,7 +4,6 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
-import strongforce.rendering.Image;
 import strongforce.rendering.Mesh;
 import strongforce.rendering.ShaderProgram;
 import strongforce.rendering.StaticVertex2D;
@@ -16,65 +15,53 @@ public class StrongForce {
 	private Mesh<StaticVertex2D> rect = new Mesh<StaticVertex2D>();
 	private ShaderProgram rectShaders = new ShaderProgram();
 
-	private Image colors = new Image();
-	private Image fieldVectors = new Image();
-
 	private ColorField colorField = new ColorField();
 	private ColorPoint hoveredPoint = null;
 
-	private float minX = -2.0F;
-	private float maxX = 2.0F;
-	private float minY = -2.0F;
-	private float maxY = 2.0F;
+	private double pX = 0.0F;
+	private double pY = 0.0F;
 
-	private float pX = 0.0F;
-	private float pY = 0.0F;
-
-	private float mouseX = 0.0F;
-	private float mouseY = 0.0F;
+	private int fw = 0, fh = 0;
+	private double mouseX = 0.0F;
+	private double mouseY = 0.0F;
 	private int buttonsDown = 0;
-	private boolean middle = false;
+	private boolean camDrag = false;
 
-	public static float clamp(float x, float min, float max) {
+	public static double clamp(double x, double min, double max) {
 		return Math.max(Math.min(x, max), min);
 	}
 
-	public static float map(float x, float xmin, float xmax, float ymin, float ymax) {
+	public static double map(double x, double xmin, double xmax, double ymin, double ymax) {
 		return (ymax - ymin) / (xmax - xmin) * (x - xmin) + ymin;
 	}
 
-	public static float mapc(float x, float xmin, float xmax, float ymin, float ymax) {
+	public static double mapc(double x, double xmin, double xmax, double ymin, double ymax) {
 		return clamp(map(x, xmin, xmax, ymin, ymax), ymin, ymax);
 	}
 
-	public float mapScreenX(float x) {
-		return map(x, 0, colors.getHeight(), minX, maxX);
-	}
-
-	public float mapScreenY(float y) {
-		return map(y, 0, colors.getHeight(), minY, maxY);
-	}
-
-	public float mapColorFieldX(float x) {
-		return map(x, minX, maxX, 0, colors.getHeight());
-	}
-
-	public float mapColorFieldY(float y) {
-		return map(y, minY, maxY, 0, colors.getHeight());
+	public static double lerp(double a, double b, double t) {
+		return a * (1.0 - t) + b * t;
 	}
 
 	public void run() {
-		window.create();
+		this.window.create();
 
-		GLFW.glfwSetScrollCallback(window.getWindowPtr(), this::mouseWheel);
-		GLFW.glfwSetCursorPosCallback(window.getWindowPtr(), this::mouseMove);
-		GLFW.glfwSetMouseButtonCallback(window.getWindowPtr(), this::mouseButton);
+		GLFW.glfwSetKeyCallback(this.window.getWindowPtr(), this::key);
+		GLFW.glfwSetScrollCallback(this.window.getWindowPtr(), this::mouseWheel);
+		GLFW.glfwSetCursorPosCallback(this.window.getWindowPtr(), this::mouseMove);
+		GLFW.glfwSetMouseButtonCallback(this.window.getWindowPtr(), this::mouseButton);
+		GLFW.glfwSetFramebufferSizeCallback(this.window.getWindowPtr(), this::framebufferSize);
 
-		rect.setVertices(new StaticVertex2D[] { new StaticVertex2D(-1.0F, 1.0F, 0.0F, 0.0F),
+		int[] pfw = new int[1], pfh = new int[1];
+		GLFW.glfwGetFramebufferSize(window.getWindowPtr(), pfw, pfh);
+		this.fw = pfw[0];
+		this.fh = pfh[0];
+
+		this.rect.setVertices(new StaticVertex2D[] { new StaticVertex2D(-1.0F, 1.0F, 0.0F, 0.0F),
 				new StaticVertex2D(1.0F, 1.0F, 1.0F, 0.0F), new StaticVertex2D(1.0F, -1.0F, 1.0F, 1.0F),
 				new StaticVertex2D(-1.0F, -1.0F, 0.0F, 1.0F) });
-		rect.setIndices(new int[] { 0, 1, 2, 2, 3, 0 });
-		rect.updateGL();
+		this.rect.setIndices(new int[] { 0, 1, 2, 2, 3, 0 });
+		this.rect.updateGL();
 
 		String vertexShader = """
 				#version 410 core
@@ -97,108 +84,153 @@ public class StrongForce {
 				layout(location = 0) out vec4 color;
 
 				uniform sampler2D colors;
-				uniform sampler2D fieldVectors;
+				uniform float width;
+				uniform float height;
+
+				vec3 getColorCharge(ivec2 pos, ivec2 size) {
+					return texture(colors, vec2(float(pos.x) / float(size.x), float(pos.y) / float(size.y))).rgb;
+				}
+
+				vec3 calculateFieldDirection(ivec2 pos, ivec2 size) {
+					vec3 z1 = getColorCharge(ivec2(pos.x - 1, pos.y - 1), size);
+					vec3 z2 = getColorCharge(ivec2(pos.x, pos.y - 1), size);
+					vec3 z3 = getColorCharge(ivec2(pos.x + 1, pos.y - 1), size);
+					vec3 z4 = getColorCharge(ivec2(pos.x - 1, pos.y), size);
+					vec3 z5 = getColorCharge(ivec2(pos.x + 1, pos.y), size);
+					vec3 z6 = getColorCharge(ivec2(pos.x - 1, pos.y + 1), size);
+					vec3 z7 = getColorCharge(ivec2(pos.x, pos.y + 1), size);
+					vec3 z8 = getColorCharge(ivec2(pos.x + 1, pos.y + 1), size);
+
+					float xden = float(size.x) / (8.0 * width);
+					float yden = float(size.y) / (8.0 * height);
+
+					vec3 direction = vec3(0.0, 0.0, 0.0);
+
+					float rg1 = z1.r + z1.g;
+					float rg2 = z2.r + z2.g;
+					float rg3 = z3.r + z3.g;
+					float rg4 = z4.r + z4.g;
+					float rg5 = z5.r + z5.g;
+					float rg6 = z6.r + z6.g;
+					float rg7 = z7.r + z7.g;
+					float rg8 = z8.r + z8.g;
+
+					direction.x = (rg3 - rg1 + 2 * (rg8 - rg6) + rg5 - rg4) * xden;
+					direction.y = (rg1 - rg6 + 2 * (rg2 - rg7) + rg3 - rg8) * yden;
+
+					float rb1 = z1.r + z1.b;
+					float rb2 = z2.r + z2.b;
+					float rb3 = z3.r + z3.b;
+					float rb4 = z4.r + z4.b;
+					float rb5 = z5.r + z5.b;
+					float rb6 = z6.r + z6.b;
+					float rb7 = z7.r + z7.b;
+					float rb8 = z8.r + z8.b;
+
+					direction.x += (rb3 - rb1 + 2 * (rb8 - rb6) + rb5 - rb4) * xden;
+					direction.y += (rb1 - rb6 + 2 * (rb2 - rb7) + rb3 - rb8) * yden;
+
+					return direction;
+				}
 
 				void main() {
-					if (passUV.x >= 0.5)
-						color = texture(fieldVectors, vec2(passUV.x * 2.0 - 1.0, passUV.y));
-					else
-						color = texture(colors, vec2(passUV.x * 2.0, passUV.y));
+					ivec2 size = textureSize(colors, 0);
+					vec3 col;
+					ivec2 pos = ivec2(int((passUV.x * 2.0 - 1.0) * (size.x - 2)) + 1, int(passUV.y * (size.y - 2)) + 1);
+					if (passUV.x >= 0.5) {
+						col = abs(calculateFieldDirection(pos, size));
+						col.x = mod(col.x, 1.0);
+						col.y = mod(col.y, 1.0);
+						col.z = mod(col.z, 1.0);
+					} else {
+						col = getColorCharge(pos, size);
+					}
+					color = vec4(col, 1.0);
 				}
 				""";
-		rectShaders.setShaderSource(vertexShader, fragmentShader);
-		rectShaders.updateGL();
-		rectShaders.bind();
-		rectShaders.setUniform1i("colors", 0);
-		rectShaders.setUniform1i("fieldVectors", 1);
-
-		colors.allocate(720, 720);
-		fieldVectors.allocate(720, 720);
+		this.rectShaders.setShaderSource(vertexShader, fragmentShader);
+		this.rectShaders.updateGL();
+		this.rectShaders.bind();
+		this.rectShaders.setUniform1i("colors", 0);
 
 		// Proton
-//		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 0.0F, 1.0F, 0.0F, 4.8e-1F));
-//		colorField.addColorPoint(new ColorPoint(-0.5F, 0.5F, 0.0F, 0.0F, 1.0F, 2.3e-1F));
-//		colorField.addColorPoint(new ColorPoint(0.5F, 0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
+//		this.colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 0.0F, 1.0F, 0.0F, 4.8e-1F));
+//		this.colorField.addColorPoint(new ColorPoint(-0.5F, 0.5F, 0.0F, 0.0F, 1.0F, 2.3e-1F));
+//		this.colorField.addColorPoint(new ColorPoint(0.5F, 0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
 
 		// Meson
-		colorField.addColorPoint(new ColorPoint(0.0F, -0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
-		colorField.addColorPoint(new ColorPoint(0.0F, 0.5F, 0.0F, 1.0F, 1.0F, 2.3e-1F));
+//		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, 1.0, 0.0, 0.0, 2.3e-1));
+//		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 0.0, 1.0, 1.0, 2.3e-1));
+		
+		// Repulsive?
+		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, -1.0, 0.0, 0.0, 2.3e-1));
+		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 1.0, 0.0, 0.0, 2.3e-1));
 
-		while (!window.isCloseRequested()) {
-			Color color = new Color();
-			Vector rg = new Vector();
-			Vector rb = new Vector();
-			Vector gb = new Vector();
-			Vector combined = new Vector();
-			for (int y = 0; y < colors.getHeight(); ++y) {
-				float my = map(y, 0, colors.getHeight(), minY, maxY);
-				for (int x = 0; x < colors.getWidth(); ++x) {
-					int index = x + y * colors.getWidth();
-					float mx = map(x, 0, colors.getWidth(), minX, maxX);
+		/*
+		 * Color color = new Color(); Vector rg = new Vector(); Vector rb = new
+		 * Vector(); Vector gb = new Vector(); Vector combined = new Vector();
+		 */
+		while (!this.window.isCloseRequested()) {
+			this.colorField.updateColors(this.fw / 2, this.fh);
 
-					colorField.calculateColor(mx, my, color);
-					colorField.calculateDirection(mx, my, (maxX - minX) / colors.getWidth() * 0.02F, rg, rb, gb);
-
-					combined.x = rg.x + rb.x/* + gb.x */;
-					combined.y = rg.y + rb.y/* + gb.y */;
-					combined.z = rg.z + rb.z/* + gb.z */;
-
-					int r = (int) mapc(color.r, 0.0F, 1.20F, 0.0F, 255.0F);
-					int g = (int) mapc(color.g, 0.0F, 1.20F, 0.0F, 255.0F);
-					int b = (int) mapc(color.b, 0.0F, 1.20F, 0.0F, 255.0F);
-
-					colors.data[index] = 255 << 24 | (b & 0xFF) << 16 | (g & 0xFF) << 8 | (r & 0xFF);
-
-					r = (int) (combined.x * 128.0F + 128.0F);
-					g = (int) (combined.y * 128.0F + 128.0F);
-					b = (int) (combined.z * 128.0F + 128.0F);
-
-					fieldVectors.data[index] = 255 << 24 | (b & 0xFF) << 16 | (g & 0xFF) << 8 | (r & 0xFF);
-				}
-			}
-
-			colors.updateGL();
-			fieldVectors.updateGL();
-
+			GL11.glViewport(0, 0, this.fw, this.fh);
 			GL11.glClearColor(0.1F, 0.1F, 0.1F, 1.0F);
 			GL11.glClearDepth(0.0);
 			GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
-			rectShaders.bind();
-			colors.bind(GL13.GL_TEXTURE0);
-			fieldVectors.bind(GL13.GL_TEXTURE1);
-			rect.draw();
+			this.rectShaders.bind();
+			double aspect = (double) this.colorField.image.getHeight() / this.colorField.image.getWidth();
+			double height = (this.colorField.maxX - this.colorField.minX) * aspect;
+			this.rectShaders.setUniform1f("width", (float) (this.colorField.maxX - this.colorField.minX));
+			this.rectShaders.setUniform1f("height", (float) height);
+			this.colorField.image.bind(GL13.GL_TEXTURE0);
+			this.rect.draw();
 
-			window.update();
+			this.window.update();
 		}
 
-		rect.cleanUp();
-		rectShaders.cleanUp();
-		colors.cleanUp();
-		fieldVectors.cleanUp();
-		window.destroy();
+		this.rect.cleanUp();
+		this.rectShaders.cleanUp();
+		this.colorField.image.cleanUp();
+		this.window.destroy();
+	}
+
+	public void key(long windowPtr, int keycode, int scancode, int action, int mods) {
+		if (action == GLFW.GLFW_PRESS)
+			keyPress(windowPtr, keycode);
+		else if (action == GLFW.GLFW_RELEASE)
+			keyRelease(windowPtr, keycode);
+	}
+
+	public void keyPress(long windowPtr, int keycode) {
+
+	}
+
+	public void keyRelease(long windowPtr, int keycode) {
+		if (keycode == GLFW.GLFW_KEY_ESCAPE)
+			GLFW.glfwSetWindowShouldClose(windowPtr, true);
 	}
 
 	public void mouseWheel(long windowPtr, double dx, double dy) {
-		float eX = mapScreenX(mouseX);
-		float eY = mapScreenY(mouseY);
+		double eX = this.colorField.mapScreenX(this.mouseX, true);
+		double eY = this.colorField.mapScreenY(this.mouseY);
 
-		float zoomFactor = (float) Math.pow(1.05F, dy);
+		double zoomFactor = Math.pow(1.05F, dy);
 
-		this.minX = (this.minX - eX) * zoomFactor + eX;
-		this.minY = (this.minY - eY) * zoomFactor + eY;
-		this.maxX = (this.maxX - eX) * zoomFactor + eX;
-		this.maxY = (this.maxY - eY) * zoomFactor + eY;
+		this.colorField.minX = (this.colorField.minX - eX) * zoomFactor + eX;
+		this.colorField.maxX = (this.colorField.maxX - eX) * zoomFactor + eX;
+		this.colorField.y = (this.colorField.y - eY) * zoomFactor + eY;
 	}
 
 	public void mouseMove(long windowPtr, double x, double y) {
-		this.mouseX = (float) x;
-		this.mouseY = (float) y;
+		this.mouseX = x;
+		this.mouseY = y;
 
-		if (buttonsDown > 0)
+		if (this.buttonsDown > 0)
 			mouseDrag(windowPtr, x, y);
 		else
-			this.hoveredPoint = this.colorField.closestPoint(mapScreenX(this.mouseX), mapScreenY(this.mouseY));
+			this.hoveredPoint = this.colorField.closestPoint(this.colorField.mapScreenX(this.mouseX, true),
+					this.colorField.mapScreenY(this.mouseY));
 	}
 
 	public void mouseButton(long windowPtr, int button, int action, int mods) {
@@ -210,36 +242,40 @@ public class StrongForce {
 
 	public void mousePress(long windowPtr, int button) {
 		++buttonsDown;
-		if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) {
-			this.pX = mapScreenX(this.mouseX);
-			this.pY = mapScreenY(this.mouseY);
-			this.middle = true;
-		} else {
-			this.hoveredPoint = this.colorField.closestPoint(mapScreenX(this.mouseX), mapScreenY(this.mouseY));
+		if (this.hoveredPoint == null) {
+			this.pX = this.colorField.mapScreenX(this.mouseX);
+			this.pY = this.colorField.mapScreenY(this.mouseY);
+			this.camDrag = true;
+		} else if (!this.camDrag) {
+			this.hoveredPoint = this.colorField.closestPoint(this.colorField.mapScreenX(this.mouseX, true),
+					this.colorField.mapScreenY(this.mouseY));
 		}
 	}
 
 	public void mouseRelease(long windowPtr, int button) {
-		--buttonsDown;
-		if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
-			this.middle = false;
+		--this.buttonsDown;
+		this.camDrag = false;
 	}
 
 	public void mouseDrag(long windowPtr, double x, double y) {
-		if (middle) {
-			float eX = mapScreenX(this.mouseX);
-			float eY = mapScreenY(this.mouseY);
+		if (this.camDrag) {
+			double eX = this.colorField.mapScreenX(this.mouseX);
+			double eY = this.colorField.mapScreenY(this.mouseY);
 
-			this.minX = (this.minX - eX) + this.pX;
-			this.minY = (this.minY - eY) + this.pY;
-			this.maxX = (this.maxX - eX) + this.pX;
-			this.maxY = (this.maxY - eY) + this.pY;
-			this.pX = eX;
-			this.pY = eY;
+			this.colorField.minX = (this.colorField.minX - eX) + this.pX;
+			this.colorField.maxX = (this.colorField.maxX - eX) + this.pX;
+			this.colorField.y = (this.colorField.y - eY) + this.pY;
+			// this.pX = eX;
+			// this.pY = eY;
 		} else if (hoveredPoint != null) {
-			this.hoveredPoint.x = mapScreenX(this.mouseX);
-			this.hoveredPoint.y = mapScreenY(this.mouseY);
+			this.hoveredPoint.x = this.colorField.mapScreenX(this.mouseX, true);
+			this.hoveredPoint.y = this.colorField.mapScreenY(this.mouseY);
 		}
+	}
+
+	public void framebufferSize(long windowPtr, int width, int height) {
+		this.fw = width;
+		this.fh = height;
 	}
 
 	public static void main(String[] args) {

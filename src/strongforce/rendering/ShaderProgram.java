@@ -16,6 +16,10 @@ public class ShaderProgram {
 		GL20.glUniform1i(GL20.glGetUniformLocation(this.program, name), value);
 	}
 
+	public void setUniform1f(String name, float value) {
+		GL20.glUniform1f(GL20.glGetUniformLocation(this.program, name), value);
+	}
+
 	public void updateGL() {
 		if (this.vertexShader == null || this.fragmentShader == null)
 			return;
