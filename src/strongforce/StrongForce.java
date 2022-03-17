@@ -159,12 +159,12 @@ public class StrongForce {
 //		this.colorField.addColorPoint(new ColorPoint(0.5F, 0.5F, 1.0F, 0.0F, 0.0F, 2.3e-1F));
 
 		// Meson
-//		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, 1.0, 0.0, 0.0, 2.3e-1));
-//		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 0.0, 1.0, 1.0, 2.3e-1));
+		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, 1.0, 0.0, 0.0, 2.3e-1));
+		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 0.0, 1.0, 1.0, 2.3e-1));
 		
 		// Repulsive?
-		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, -1.0, 0.0, 0.0, 2.3e-1));
-		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 1.0, 0.0, 0.0, 2.3e-1));
+//		this.colorField.addColorPoint(new ColorPoint(0.0, -0.5, -1.0, 0.0, 0.0, 2.3e-1));
+//		this.colorField.addColorPoint(new ColorPoint(0.0, 0.5, 1.0, 0.0, 0.0, 2.3e-1));
 
 		/*
 		 * Color color = new Color(); Vector rg = new Vector(); Vector rb = new
